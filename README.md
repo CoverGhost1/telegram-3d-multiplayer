@@ -1,63 +1,30 @@
-# Telegram 3D Multiplayer
+# Telegram 3D Multiplayer v2 — Roblox-style
 
-Struktur:
-- backend-3d: Node.js + Express + Socket.IO
-- frontend-3d: Three.js + Telegram Mini App
+Upgrade dari v1 (kotak polos di lantai gelap) jadi kota kecil ala Roblox.
 
-## 1. Jalankan backend
+## Yang berubah dari v1
+- **Avatar Roblox-style:** kepala + badan + 2 tangan + 2 kaki (blocky), wajah (mata + senyum), warna baju/celana/kulit acak per pemain, label nama di atas kepala.
+- **Animasi:** tangan & kaki ayun pas jalan, pose lompat (tangan ke atas), hadap ke arah jalan (rotasi halus).
+- **Gerakan:** jalan (WASD / D-pad), **lompat** (Spasi / tombol LOMPAT, ada gravitasi), **lari** (Shift / tombol LARI).
+- **Kamera orbit:** seret layar untuk putar kamera, scroll untuk zoom.
+- **Dunia:** langit siang + matahari + awan bergerak, rumput bertekstur, jalan aspal + garis kuning, plaza bundar, 10 gedung berjendela, pohon, lampu jalan, bangku, air mancur, pagar putih. Arena 56x56 (dulu 30x30).
+- **Tabrakan:** gedung, pohon, lampu, bangku, air mancur & pagar tidak bisa ditembus.
+- **Multiplayer lebih halus:** server kirim x/y/z + rotasi + status jalan; pemain lain bergerak pakai interpolasi (tidak lompat-lompat). Ada hitung jumlah pemain.
+- **Mode Demo:** kalau `BACKEND_URL` belum diisi, game tetap bisa dicoba tanpa backend — tanpa bot/NPC (sesuai permintaan Ghoz).
+- **Bersih:** `node_modules/` TIDAK ikut di repo ini (v1 terlanjur ke-commit 988 file — hapus dengan `git rm -r --cached backend-3d/node_modules`).
 
-Masuk ke folder backend:
+## Cara jalanin
+Backend: `cd backend-3d && npm install && npm start` (port 3000, `PORT` bisa diubah).
+Frontend: isi `BACKEND_URL` di `frontend-3d/app.js` dengan URL backend, upload `frontend-3d/` ke Vercel sebagai static site, pasang URL-nya sebagai Telegram Mini App di @BotFather.
 
-npm install
-npm start
+## Catatan
+Identitas Telegram masih dari `initDataUnsafe` (tampilan saja). Untuk produksi, validasi `initData` di server pakai bot token. Posisi pemain masih di RAM — restart server = posisi hilang.
 
-Server default:
-http://localhost:3000
-
-## 2. Deploy backend
-
-Deploy folder `backend-3d` ke Railway, Koyeb, VPS, atau host Node.js lain.
-
-Pastikan server mendapatkan public HTTPS URL.
-
-Contoh:
-https://nama-backend.example.com
-
-## 3. Hubungkan frontend
-
-Buka:
-
-frontend-3d/app.js
-
-Cari:
-
-const BACKEND_URL = "GANTI_DENGAN_URL_BACKEND";
-
-Ganti dengan URL backend kamu.
-
-Contoh:
-
-const BACKEND_URL = "https://nama-backend.example.com";
-
-## 4. Deploy frontend
-
-Upload folder `frontend-3d` ke Vercel sebagai static site.
-
-Hasilnya misalnya:
-
-https://dunia-3d-kamu.vercel.app
-
-## 5. Pasang sebagai Telegram Mini App
-
-Di @BotFather:
-- pilih bot
-- buat/configure Mini App
-- masukkan URL HTTPS Vercel
-- pasang menu button / Mini App sesuai konfigurasi BotFather
-
-## Catatan penting
-
-Versi ini menggunakan data Telegram yang tersedia di `initDataUnsafe.user` hanya untuk nama tampilan.
-Untuk sistem produksi yang membutuhkan identitas Telegram yang benar-benar terverifikasi, backend harus memvalidasi `Telegram.WebApp.initData` menggunakan bot token di server.
-
-Backend menyimpan pemain di RAM. Jika server restart, semua posisi hilang. Ini cocok untuk prototype multiplayer sederhana.
+## v3 — Bangunan bisa dimasuki + Ruangan Berdua (20 Nov 2026)
+- 3 gedung bisa dimasuki: **Rumah** (gedung hijau -10,-23), **Kafe** (gedung kuning 4,-23), **Ruangan Berdua** (gedung biru 10,23).
+- Cara masuk: jalan ke depan pintu sampai muncul prompt, tekan **E** di keyboard atau tombol **MASUK** di HP. Keluar: tekan **E** / tombol **KELUAR** (pintu keluar di dinding selatan interior).
+- Interior: Rumah (sofa, meja, TV, karpet), Kafe (meja kasir + 4 meja), Ruangan Berdua (ranjang double, sofa berdua, meja lilin, hati pink di dinding, papan nama "Ghoz & Pacar").
+- Ruangan Berdua **privat max 2 orang**: server menolak pemain ke-3 (`zoneDenied`, "Ruangan Berdua sudah penuh"), dan pemain di zona lain tidak terlihat dari luar/dalam.
+- Server v3 kirim `zone` di `currentPlayers`/`playerMoved`; teleport masuk/keluar diizinkan (batas langkah 90 saat ganti zona).
+- Nama di papan Ruangan Berdua masih placeholder — ganti `COUPLE_NAMES` di `frontend-3d/app.js` kalau nama pacar sudah diketahui.
+- Tanpa NPC/bot (sesuai permintaan Ghoz 20 Nov 2026).
