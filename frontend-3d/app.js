@@ -8,6 +8,10 @@
 // v5: Socket.IO diganti Supabase Realtime (presence + broadcast).
 //      Tidak butuh server backend lagi — frontend saja di Vercel,
 //      pemain saling lihat lewat channel Supabase 'dunia-3d'.
+// v5.1: auto-reconnect — kalau channel putus (CHANNEL_ERROR / TIMED_OUT /
+//      CLOSED) status jadi "🟡 Menghubungkan ulang..." dan channel dibuat
+//      ulang dengan backoff 2s → 4s → 8s (maks 10s), presence di-track
+//      ulang saat SUBSCRIBED; cek keamanan tiap 5 detik juga memicu retry.
 // ============================================================
 const SUPABASE_URL = "https://euywpjczkchpvtkpvbps.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV1eXdwamN6a2NocHZ0a3B2YnBzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTUzNTM4MTksImV4cCI6MjExMDkyOTgxOX0.cqUnF7MkI0GJC2HBu1qROyo8RSIJCw3k8X5QlVpw59g";
@@ -458,8 +462,45 @@ setCount(1);
 // posisi dasar), broadcast 'move' untuk update posisi yang sering.
 // Tanpa server backend — semua pemain terhubung langsung ke Supabase.
 const playerId = (window.crypto?.randomUUID ? window.crypto.randomUUID() : "p-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8));
+let supabaseClient = null;
 let channel = null;
 let netOnline = false;
+// --- v5.1 auto-reconnect: backoff 2s -> 4s -> 8s, cap 10s ---
+let reconnectTimer = null;
+let reconnectDelay = 2000;
+const RECONNECT_MAX = 10000;
+function scheduleReconnect() {
+  if (reconnectTimer) return; // sudah ada retry yang menunggu
+  netOnline = false;
+  setStatus("🟡 Menghubungkan ulang...");
+  reconnectTimer = setTimeout(() => { reconnectTimer = null; setupRealtime(); }, reconnectDelay);
+  reconnectDelay = Math.min(RECONNECT_MAX, reconnectDelay * 2);
+}
+function setupRealtime() {
+  if (!supabaseClient) return;
+  if (channel) {
+    try { supabaseClient.removeChannel(channel); } catch (e) { /* abaikan */ }
+    channel = null;
+  }
+  channel = supabaseClient.channel("dunia-3d", {
+    config: { presence: { key: playerId }, broadcast: { self: false } },
+  });
+  channel.on("presence", { event: "sync" }, syncFromPresence);
+  channel.on("presence", { event: "join" }, syncFromPresence);
+  channel.on("presence", { event: "leave" }, syncFromPresence);
+  channel.on("broadcast", { event: "move" }, ({ payload }) => applyRemoteState(payload));
+  channel.subscribe(async (status) => {
+    if (status === "SUBSCRIBED") {
+      netOnline = true;
+      reconnectDelay = 2000; // reset backoff setelah berhasil
+      setStatus("🟢 Online");
+      await channel.track(presencePayload());
+      syncFromPresence();
+    } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+      scheduleReconnect();
+    }
+  });
+}
 function presencePayload() {
   return { id: playerId, name: myData.name, x: myData.x, y: myData.y, z: myData.z, rotY: myData.rotY, moving: myData.moving, zone: currentZone, shirt: myData.shirt, pants: myData.pants, skin: myData.skin };
 }
@@ -491,25 +532,12 @@ function publishPresenceNow() {
 }
 if (window.supabase?.createClient) {
   setStatus("🟡 Menghubungkan...");
-  const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-  channel = supabaseClient.channel("dunia-3d", {
-    config: { presence: { key: playerId }, broadcast: { self: false } },
-  });
-  channel.on("presence", { event: "sync" }, syncFromPresence);
-  channel.on("presence", { event: "join" }, syncFromPresence);
-  channel.on("presence", { event: "leave" }, syncFromPresence);
-  channel.on("broadcast", { event: "move" }, ({ payload }) => applyRemoteState(payload));
-  channel.subscribe(async (status) => {
-    if (status === "SUBSCRIBED") {
-      netOnline = true;
-      setStatus("🟢 Online");
-      await channel.track(presencePayload());
-      syncFromPresence();
-    } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
-      netOnline = false;
-      setStatus("🔴 Offline");
-    }
-  });
+  supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  setupRealtime();
+  // Cek keamanan tiap 5 detik: kalau masih offline dan tidak ada retry
+  // yang menunggu, picu retry. (Menangkap kasus di mana callback
+  // subscribe tidak pernah terpanggil sama sekali.)
+  setInterval(() => { if (!netOnline && !reconnectTimer) scheduleReconnect(); }, 5000);
 } else {
   setStatus("🔴 Offline — Supabase gagal dimuat");
   setCount(1);

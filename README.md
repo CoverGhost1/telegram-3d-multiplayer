@@ -39,3 +39,7 @@ Identitas Telegram masih dari `initDataUnsafe` (tampilan saja). Untuk produksi, 
 - Ruangan Berdua **privat max 2 orang**: sebelum masuk, frontend menghitung presence yang sedang di zona `berdua`; kalau sudah 2, masuk ditolak dengan pesan "Ruangan Berdua sudah penuh (max 2 orang)". Pemain di zona berbeda tetap tidak saling terlihat.
 - Status HUD: "Menghubungkan..." → "🟢 Online" saat channel tersubscribe, "🔴 Offline" kalau error. Jumlah pemain = jumlah presence (termasuk diri sendiri).
 - Keterbatasan: kalau dua pemain masuk Ruangan Berdua di saat yang persis bersamaan, keduanya bisa lolos cek (race condition — tidak ada server yang mengunci).
+
+## v5.1 — Auto-reconnect Supabase (22 Nov 2026)
+- Kalau channel putus (CHANNEL_ERROR / TIMED_OUT / CLOSED), HUD jadi "🟡 Menghubungkan ulang..." dan channel dibuat ulang otomatis dengan backoff 2s → 4s → 8s (maks 10s); presence di-track ulang saat SUBSCRIBED. Cek keamanan tiap 5 detik juga memicu retry kalau masih offline.
+- Pintu Ruangan Berdua terverifikasi bisa dicapai: pemain paling dekat bisa berdiri 0,35 unit dari titik pintu (batas trigger 3,0) — collider gedung tidak menghalangi.
