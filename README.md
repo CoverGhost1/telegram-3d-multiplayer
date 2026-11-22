@@ -43,3 +43,11 @@ Identitas Telegram masih dari `initDataUnsafe` (tampilan saja). Untuk produksi, 
 ## v5.1 — Auto-reconnect Supabase (22 Nov 2026)
 - Kalau channel putus (CHANNEL_ERROR / TIMED_OUT / CLOSED), HUD jadi "🟡 Menghubungkan ulang..." dan channel dibuat ulang otomatis dengan backoff 2s → 4s → 8s (maks 10s); presence di-track ulang saat SUBSCRIBED. Cek keamanan tiap 5 detik juga memicu retry kalau masih offline.
 - Pintu Ruangan Berdua terverifikasi bisa dicapai: pemain paling dekat bisa berdiri 0,35 unit dari titik pintu (batas trigger 3,0) — collider gedung tidak menghalangi.
+
+## v6 — Live together: dunia besar + emote + aksi bareng (22 Nov 2026)
+- **Dunia lebih besar:** batas arena 27 → 45 (tanah 110x110, pagar + jalan diperpanjang), 10 gedung dekoratif baru, 12 pohon + 8 lampu + 4 bangku + 6 semak tambahan, kolam kecil (32,24), taman bermain (ayunan + perosotan di -26,-37).
+- **Interior lebih detail:** Rumah 14x10 (ruang tamu + dapur + kamar + meja makan), Kafe 14x10 (kasir + papan MENU + etalase cemilan + 4 meja + tanaman), Ruangan Berdua 12x9 (ranjang double + sofa + TV + meja lilin + radio + lampu lantai), **Bioskop Mini baru** 12x9 (gedung ungu -34,14; 8 kursi + layar besar + stand popcorn).
+- **Emote tersinkron** (bar atas / tombol 1-6): 👋 Dadah, 💃 Joget, 😂 Ketawa, 😴 Tidur, 🪑 Duduk, ❤️ Sayang. Emote dikirim lewat presence + broadcast `move`, jadi pemain lain melihatnya; dadah/joget/ketawa/sayang habis ~4 detik, tidur/duduk menetap sampai gerak.
+- **Aksi bareng (F / tombol aksi, muncul dekat objek):** 😴 Tidur di kasur (Rumah + Berdua, avatar berbaring + "Zzz"), 🍳 Masak di kompor (3 detik, uap naik, pizza muncul di meja dapur), 🧁 Ambil cemilan (Kafe), 🍿 Ambil popcorn (Bioskop), 🍽️ Makan (makanan bersama per zona, tersinkron broadcast `food`/`eat`), 🎵 Putar musik di radio Ruangan Berdua (melodi WebAudio, tersinkron broadcast `music` + presence; tombol 🔊/🔇 untuk mute lokal), 📺 Nonton TV bareng (Rumah, Berdua, Bioskop — layar canvas animasi "SEDANG TAYANG", tersinkron broadcast `tv` + presence).
+- Zona baru `bioskop` (tanpa batas 2 orang); pemain di zona berbeda tetap tidak saling terlihat. Tanpa NPC/bot (sesuai permintaan Ghoz).
+- Keterbatasan: makanan tersinkron per zona (satu spot aktif per zona); musik hanya di Ruangan Berdua; kalau dua pemain masuk Berdua di saat persis bersamaan, race condition max-2 tetap ada.

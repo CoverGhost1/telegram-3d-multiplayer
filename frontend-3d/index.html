@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <meta name="theme-color" content="#7ec8f0" />
-  <title>Dunia 3D Multiplayer v5 — Roblox-style</title>
+  <title>Dunia 3D Multiplayer v6 — Roblox-style</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -16,6 +16,11 @@
     #hud b { font-size: 14px; }
     #status { margin-top: 4px; opacity: .85; }
     #count { margin-top: 2px; opacity: .85; }
+    #mediaState { margin-top: 2px; color: #ffd76e; font-weight: bold; }
+    #muteBtn { position: fixed; top: 12px; right: 12px; z-index: 30; width: 44px; height: 44px; border: 0; border-radius: 50%; background: rgba(0,0,0,.45); color: white; font-size: 20px; backdrop-filter: blur(8px); -webkit-tap-highlight-color: transparent; touch-action: none; }
+    #emoteBar { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 30; display: flex; gap: 6px; }
+    #emoteBar button { width: 42px; height: 42px; border: 0; border-radius: 12px; background: rgba(255,255,255,.22); color: white; font-size: 20px; backdrop-filter: blur(8px); -webkit-tap-highlight-color: transparent; touch-action: none; }
+    #emoteBar button:active { background: rgba(255,255,255,.45); transform: scale(.92); }
     #stickBase { position: fixed; left: 22px; bottom: 22px; z-index: 30; width: 124px; height: 124px; border-radius: 50%; background: rgba(255,255,255,.18); border: 2px solid rgba(255,255,255,.35); backdrop-filter: blur(8px); touch-action: none; user-select: none; -webkit-user-select: none; }
     #stickKnob { position: absolute; left: 50%; top: 50%; width: 56px; height: 56px; margin: -28px 0 0 -28px; border-radius: 50%; background: rgba(255,255,255,.55); border: 2px solid rgba(255,255,255,.8); box-shadow: 0 2px 8px rgba(0,0,0,.3); pointer-events: none; }
     .btn { width: 64px; height: 64px; border: 0; border-radius: 16px; background: rgba(255,255,255,.22); color: white; font-size: 25px; backdrop-filter: blur(8px); -webkit-tap-highlight-color: transparent; touch-action: none; }
@@ -26,6 +31,8 @@
     #hint { position: fixed; right: 14px; bottom: 124px; z-index: 20; color: rgba(255,255,255,.9); font-size: 11px; background: rgba(0,0,0,.35); padding: 8px 10px; border-radius: 10px; text-align: right; line-height: 1.5; pointer-events: none; }
     #enterPrompt { position: fixed; left: 50%; bottom: 150px; transform: translateX(-50%); z-index: 30; color: white; font-size: 14px; font-weight: bold; background: rgba(0,0,0,.6); padding: 10px 14px; border-radius: 12px; display: none; white-space: nowrap; }
     #enterBtn { position: fixed; left: 50%; bottom: 100px; transform: translateX(-50%); z-index: 30; min-width: 110px; height: 48px; border: 0; border-radius: 24px; background: rgba(255,120,170,.9); color: white; font-size: 15px; font-weight: bold; display: none; }
+    #actionPrompt { position: fixed; left: 50%; bottom: 215px; transform: translateX(-50%); z-index: 30; color: white; font-size: 14px; font-weight: bold; background: rgba(0,0,0,.6); padding: 10px 14px; border-radius: 12px; display: none; white-space: nowrap; }
+    #actionBtn { position: fixed; left: 50%; bottom: 165px; transform: translateX(-50%); z-index: 30; min-width: 130px; height: 44px; border: 0; border-radius: 22px; background: rgba(90,180,90,.92); color: white; font-size: 14px; font-weight: bold; display: none; padding: 0 16px; }
     @media (min-width: 800px) {
       #stickBase { left: 30px; bottom: 30px; }
     }
@@ -36,13 +43,25 @@
     <div id="playerName"><b>Menghubungkan...</b></div>
     <div id="status">Connecting...</div>
     <div id="count">👥 1 pemain</div>
+    <div id="mediaState"></div>
+  </div>
+  <button id="muteBtn" aria-label="Bisukan musik">🔊</button>
+  <div id="emoteBar" aria-label="Emote">
+    <button data-emote="wave" aria-label="Dadah" title="Dadah (1)">👋</button>
+    <button data-emote="dance" aria-label="Joget" title="Joget (2)">💃</button>
+    <button data-emote="laugh" aria-label="Ketawa" title="Ketawa (3)">😂</button>
+    <button data-emote="sleep" aria-label="Tidur" title="Tidur (4)">😴</button>
+    <button data-emote="sit" aria-label="Duduk" title="Duduk (5)">🪑</button>
+    <button data-emote="love" aria-label="Sayang" title="Sayang (6)">❤️</button>
   </div>
   <div id="stickBase" aria-label="Joystick analog"><div id="stickKnob"></div></div>
   <button id="runBtn" aria-label="Lari">🏃<br>LARI</button>
   <button id="jumpBtn" aria-label="Lompat">⬆<br>LOMPAT</button>
+  <div id="actionPrompt"></div>
+  <button id="actionBtn"></button>
   <div id="enterPrompt"></div>
   <button id="enterBtn">MASUK</button>
-  <div id="hint">Seret layar = putar kamera<br>Joystick analog = jalan<br>(dikit = pelan, mentok = lari)<br>WASD = jalan (desktop)<br>Spasi / LOMPAT = lompat<br>Shift / LARI = lari<br>E / MASUK = masuk bangunan</div>
+  <div id="hint">Seret layar = putar kamera<br>Joystick analog = jalan<br>(dikit = pelan, mentok = lari)<br>WASD = jalan (desktop)<br>Spasi / LOMPAT = lompat<br>Shift / LARI = lari<br>E / MASUK = masuk bangunan<br>1-6 = emote • F = aksi<br>(tidur / masak / musik / TV)</div>
   <script src="app.js"></script>
 </body>
 </html>
