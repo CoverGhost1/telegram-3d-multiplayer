@@ -1,6 +1,8 @@
 // ============================================================
 // Dunia 3D Multiplayer v6 — Roblox-style + live together
 // v6: dunia lebih besar (limit 45), interior lebih detail, Bioskop Mini,
+// v6.1: pintu Bioskop keluar dari tembok (dulu terkubur), id pemain disimpan
+//      di sessionStorage (hitungan tidak melonjak saat reload), emote 6 detik.
 //     emote tersinkron (dadah/joget/ketawa/tidur/duduk/sayang),
 //     aksi bareng: tidur di kasur, masak + makan, cemilan, musik (WebAudio),
 //     nonton TV bareng (layar animasi) — semua tersinkron via Supabase.
@@ -312,7 +314,7 @@ const DOORS = [
   { x: -10, z: -19.2, zone: "rumah", label: "RUMAH" },
   { x: 4, z: -18.7, zone: "kafe", label: "KAFE" },
   { x: 10, z: 19.2, zone: "berdua", label: "RUANGAN BERDUA" },
-  { x: -34, z: 17.7, zone: "bioskop", label: "BIOSKOP MINI" },
+  { x: -34, z: 18.3, zone: "bioskop", label: "BIOSKOP MINI" }, // pintu 0,3 di luar dinding selatan (z=18) — dulu 17,7, terkubur di dalam tembok
 ];
 function boxAt(x, y, z, w, h, d, color, parent) {
   const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshStandardMaterial({ color, roughness: 0.85 }));
@@ -701,7 +703,7 @@ setCount(1);
 
 // ---------------- v6: EMOTE + MUSIK + MAKANAN + AKSI LIVE-TOGETHER ----------------
 const EMOTES = { wave: "👋 Dadah", dance: "💃 Joget", laugh: "😂 Ketawa", sleep: "😴 Tidur", sit: "🪑 Duduk", love: "❤️ Sayang" };
-const EMOTE_TIMED = { wave: 1, dance: 1, laugh: 1, love: 1 }; // habis ~4 detik; sleep/sit menetap
+const EMOTE_TIMED = { wave: 1, dance: 1, laugh: 1, love: 1 }; // habis ~6 detik; sleep/sit menetap
 let myEmote = { name: "", until: 0 };
 let mySleep = false;          // tidur di kasur (bangun kalau gerak / tekan aksi lagi)
 let myCookingUntil = 0;       // timestamp selesai masak
@@ -709,7 +711,7 @@ let cookSteamTimer = 0;
 function setEmote(name) {
   if (myEmote.name === name) { clearEmote(); return; }
   myEmote.name = name;
-  myEmote.until = EMOTE_TIMED[name] ? performance.now() + 4000 : 0;
+  myEmote.until = EMOTE_TIMED[name] ? performance.now() + 6000 : 0;
   publishPresenceNow();
 }
 function clearEmote() {
@@ -933,7 +935,18 @@ function applyMediaFromPresence() {
 // Satu channel 'dunia-3d': presence untuk daftar pemain (join/leave +
 // posisi dasar), broadcast 'move' untuk update posisi yang sering.
 // Tanpa server backend — semua pemain terhubung langsung ke Supabase.
-const playerId = (window.crypto?.randomUUID ? window.crypto.randomUUID() : "p-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8));
+const playerId = (() => {
+  // v6.1: id pemain disimpan di sessionStorage — reload di tab yang sama
+  // memakai id yang sama, jadi presence lama tidak kehitung sebagai pemain
+  // baru (hitungan sempat melonjak 2–5 karena tiap reload bikin UUID baru).
+  try {
+    const saved = window.sessionStorage?.getItem("tg3d-player-id");
+    if (saved) return saved;
+  } catch (e) { /* abaikan */ }
+  const fresh = (window.crypto?.randomUUID ? window.crypto.randomUUID() : "p-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8));
+  try { window.sessionStorage?.setItem("tg3d-player-id", fresh); } catch (e) { /* abaikan */ }
+  return fresh;
+})();
 let supabaseClient = null;
 let channel = null;
 let netOnline = false;
@@ -1000,7 +1013,7 @@ function presencePayload() {
 function applyRemoteState(p) {
   if (!p || p.id === playerId) return;
   const em = p.emote || "";
-  const emUntil = (em === "sleep" || em === "sit") ? Infinity : (em ? performance.now() + 4000 : 0);
+  const emUntil = (em === "sleep" || em === "sit") ? Infinity : (em ? performance.now() + 6000 : 0);
   const ex = otherPlayers[p.id];
   if (!ex) {
     const mesh = createAvatar(p);
