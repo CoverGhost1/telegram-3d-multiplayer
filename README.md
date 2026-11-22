@@ -13,9 +13,8 @@ Upgrade dari v1 (kotak polos di lantai gelap) jadi kota kecil ala Roblox.
 - **Mode Demo:** kalau `BACKEND_URL` belum diisi, game tetap bisa dicoba tanpa backend — tanpa bot/NPC (sesuai permintaan Ghoz).
 - **Bersih:** `node_modules/` TIDAK ikut di repo ini (v1 terlanjur ke-commit 988 file — hapus dengan `git rm -r --cached backend-3d/node_modules`).
 
-## Cara jalanin
-Backend: `cd backend-3d && npm install && npm start` (port 3000, `PORT` bisa diubah).
-Frontend: isi `BACKEND_URL` di `frontend-3d/app.js` dengan URL backend, upload `frontend-3d/` ke Vercel sebagai static site, pasang URL-nya sebagai Telegram Mini App di @BotFather.
+## Cara jalanin (v5)
+Frontend: upload `frontend-3d/` ke Vercel sebagai static site, pasang URL-nya sebagai Telegram Mini App di @BotFather. Tidak perlu backend — multiplayer jalan lewat Supabase Realtime (URL + anon key sudah ada di `frontend-3d/app.js`).
 
 ## Catatan
 Identitas Telegram masih dari `initDataUnsafe` (tampilan saja). Untuk produksi, validasi `initData` di server pakai bot token. Posisi pemain masih di RAM — restart server = posisi hilang.
@@ -33,3 +32,10 @@ Identitas Telegram masih dari `initDataUnsafe` (tampilan saja). Untuk produksi, 
 - D-pad diganti **joystick analog** (kiri bawah): dorong dikit = jalan pelan, dorong mentok = lari (kecepatan 2–8 ikut jarak dorongan). WASD tetap jalan di desktop.
 - Papan nama Ruangan Berdua kini "Ghoz & Adel".
 - Backend masih server.js v3 (Socket.IO, zona + Ruangan Berdua max 2). Deploy backend ke Render, lalu isi BACKEND_URL di frontend-3d/app.js.
+
+## v5 — Supabase Realtime, tanpa server backend (22 Nov 2026)
+- Socket.IO + `BACKEND_URL` dihapus. Frontend memakai **Supabase Realtime** (channel `dunia-3d`): presence untuk daftar pemain (join/leave + posisi + zona) dan broadcast `move` ~15/detik untuk gerakan halus.
+- Tidak butuh server backend lagi — frontend saja di Vercel. `backend-3d/` dibiarkan apa adanya sebagai referensi, tidak dipakai frontend.
+- Ruangan Berdua **privat max 2 orang**: sebelum masuk, frontend menghitung presence yang sedang di zona `berdua`; kalau sudah 2, masuk ditolak dengan pesan "Ruangan Berdua sudah penuh (max 2 orang)". Pemain di zona berbeda tetap tidak saling terlihat.
+- Status HUD: "Menghubungkan..." → "🟢 Online" saat channel tersubscribe, "🔴 Offline" kalau error. Jumlah pemain = jumlah presence (termasuk diri sendiri).
+- Keterbatasan: kalau dua pemain masuk Ruangan Berdua di saat yang persis bersamaan, keduanya bisa lolos cek (race condition — tidak ada server yang mengunci).

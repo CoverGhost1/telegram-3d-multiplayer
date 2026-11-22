@@ -1,12 +1,16 @@
 // ============================================================
-// Dunia 3D Multiplayer v4 — Roblox-style + interior + analog
+// Dunia 3D Multiplayer v5 — Roblox-style + interior + analog
 // Avatar blocky beranimasi + kota kecil + lompat/lari + kamera orbit
 // v3: 3 bangunan bisa dimasuki (Rumah, Kafe, Ruangan Berdua privat max 2 orang)
 // v4: D-pad diganti joystick ANALOG — dorong dikit = jalan pelan,
 //      dorong mentok = lari. Kecepatan ikut seberapa jauh stick didorong.
 // Nama Ruangan Berdua: "Ghoz & Adel" (Adel, ultah 16 Januari).
+// v5: Socket.IO diganti Supabase Realtime (presence + broadcast).
+//      Tidak butuh server backend lagi — frontend saja di Vercel,
+//      pemain saling lihat lewat channel Supabase 'dunia-3d'.
 // ============================================================
-const BACKEND_URL = "GANTI_DENGAN_URL_BACKEND";
+const SUPABASE_URL = "https://euywpjczkchpvtkpvbps.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV1eXdwamN6a2NocHZ0a3B2YnBzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTUzNTM4MTksImV4cCI6MjExMDkyOTgxOX0.cqUnF7MkI0GJC2HBu1qROyo8RSIJCw3k8X5QlVpw59g";
 const COUPLE_NAMES = "Ghoz & Adel";
 const WORLD_LIMIT = 27;
 const WALK_SPEED = 5.0;
@@ -293,6 +297,7 @@ function enterZone(zoneKey) {
   myMesh.position.set(myData.x, 0, myData.z);
   setStatus(zoneKey === "berdua" ? "💕 Ruangan Berdua — privat, max 2 orang" : "🏠 Di dalam: " + it.label);
   updateEnterPrompt();
+  publishPresenceNow(); // kabari pemain lain langsung soal pindah zona
 }
 function exitZone() {
   const door = DOORS.find(d => d.zone === currentZone);
@@ -300,12 +305,24 @@ function exitZone() {
   if (door) { myData.x = door.x; myData.z = door.z + 1.8; }
   myData.y = 0; myData.vy = 0; myData.rotY = 0;
   myMesh.position.set(myData.x, 0, myData.z);
-  setStatus(isDemo ? "🟡 Mode Demo — isi BACKEND_URL untuk multiplayer" : "🟢 Online");
+  setStatus(netOnline ? "🟢 Online" : "🔴 Offline");
   updateEnterPrompt();
+  publishPresenceNow(); // kabari pemain lain langsung soal pindah zona
+}
+function countInBerdua() {
+  if (!channel) return 0;
+  return Object.values(channel.presenceState()).flat()
+    .filter(p => p && p.zone === "berdua" && p.id !== playerId).length;
 }
 function tryEnterExit() {
   if (currentZone !== "luar") { exitZone(); return; }
-  const d = nearestDoor(); if (d) enterZone(d.zone);
+  const d = nearestDoor(); if (!d) return;
+  // Ruangan Berdua privat max 2 orang — cek dari presence Supabase
+  if (d.zone === "berdua" && countInBerdua() >= 2) {
+    setStatus("🔒 Ruangan Berdua sudah penuh (max 2 orang)");
+    return;
+  }
+  enterZone(d.zone);
 }
 function updateEnterPrompt() {
   const el = document.getElementById("enterPrompt"); const btn = document.getElementById("enterBtn");
@@ -436,52 +453,66 @@ function setStatus(t) { document.getElementById("status").textContent = t; }
 function setCount(n) { document.getElementById("count").textContent = "👥 " + n + " pemain"; }
 setCount(1);
 
-// ---------------- Socket.IO ----------------
-let socket = null;
-const isDemo = !BACKEND_URL || BACKEND_URL === "GANTI_DENGAN_URL_BACKEND";
-if (isDemo) {
-  setStatus("🟡 Mode Demo — isi BACKEND_URL untuk multiplayer");
-  // Tanpa bot/NPC — sesuai permintaan Ghoz (20 Nov 2026): kota kosong, hanya pemain sendiri.
-  setCount(1);
-} else {
-  socket = io(BACKEND_URL, { transports: ["websocket", "polling"], auth: { telegramUser } });
-  socket.on("connect", () => setStatus("🟢 Online"));
-  socket.on("disconnect", () => setStatus("🔴 Terputus"));
-  socket.on("connect_error", (e) => { console.error(e); setStatus("🔴 Gagal terhubung"); });
-  socket.on("playerCount", (n) => setCount(n));
-  socket.on("zoneDenied", (d) => {
-    // Server menolak masuk Ruangan Berdua (sudah penuh) — balik ke luar
-    if (currentZone === "berdua") exitZone();
-    setStatus("🔒 " + (d.reason || "Ruangan penuh"));
-  });
-  socket.on("currentPlayers", (players) => {
-    Object.entries(players).forEach(([id, p]) => {
-      if (id === socket.id) {
-        myData = { ...myData, ...p, vy: 0, grounded: true, zone: p.zone || "luar" };
-        currentZone = myData.zone;
-        scene.remove(myMesh); myMesh = createAvatar(myData, true);
-      } else if (!otherPlayers[id]) {
-        const mesh = createAvatar(p);
-        otherPlayers[id] = { mesh, target: { x: p.x, y: p.y || 0, z: p.z, rotY: p.rotY || 0 }, moving: !!p.moving, zone: p.zone || "luar" };
-      }
-    });
-    setCount(Object.keys(players).length);
-  });
-  socket.on("newPlayer", (p) => {
-    if (p.id === socket.id || otherPlayers[p.id]) return;
+// ---------------- Supabase Realtime (v5: ganti Socket.IO) ----------------
+// Satu channel 'dunia-3d': presence untuk daftar pemain (join/leave +
+// posisi dasar), broadcast 'move' untuk update posisi yang sering.
+// Tanpa server backend — semua pemain terhubung langsung ke Supabase.
+const playerId = (window.crypto?.randomUUID ? window.crypto.randomUUID() : "p-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8));
+let channel = null;
+let netOnline = false;
+function presencePayload() {
+  return { id: playerId, name: myData.name, x: myData.x, y: myData.y, z: myData.z, rotY: myData.rotY, moving: myData.moving, zone: currentZone, shirt: myData.shirt, pants: myData.pants, skin: myData.skin };
+}
+function applyRemoteState(p) {
+  if (!p || p.id === playerId) return;
+  const ex = otherPlayers[p.id];
+  if (!ex) {
     const mesh = createAvatar(p);
-    otherPlayers[p.id] = { mesh, target: { x: p.x, y: p.y || 0, z: p.z, rotY: p.rotY || 0 }, moving: false, zone: p.zone || "luar" };
-    setCount(Object.keys(otherPlayers).length + 1);
+    otherPlayers[p.id] = { mesh, target: { x: p.x, y: p.y || 0, z: p.z, rotY: p.rotY || 0 }, moving: !!p.moving, zone: p.zone || "luar" };
+  } else {
+    ex.target = { x: p.x, y: p.y || 0, z: p.z, rotY: p.rotY || 0 };
+    ex.moving = !!p.moving;
+    if (p.zone) ex.zone = p.zone;
+  }
+}
+function syncFromPresence() {
+  if (!channel) return;
+  const state = channel.presenceState();
+  const all = Object.values(state).flat();
+  const seen = new Set();
+  all.forEach(p => { if (p && p.id && p.id !== playerId) { seen.add(p.id); applyRemoteState(p); } });
+  Object.keys(otherPlayers).forEach(id => {
+    if (!seen.has(id)) { scene.remove(otherPlayers[id].mesh); delete otherPlayers[id]; }
   });
-  socket.on("playerMoved", (d) => {
-    const o = otherPlayers[d.id]; if (!o) return;
-    o.target = { x: d.x, y: d.y || 0, z: d.z, rotY: d.rotY || 0 }; o.moving = !!d.moving; if (d.zone) o.zone = d.zone;
+  setCount(Math.max(1, all.length));
+}
+function publishPresenceNow() {
+  if (channel && netOnline) channel.track(presencePayload()).catch(() => {});
+}
+if (window.supabase?.createClient) {
+  setStatus("🟡 Menghubungkan...");
+  const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  channel = supabaseClient.channel("dunia-3d", {
+    config: { presence: { key: playerId }, broadcast: { self: false } },
   });
-  socket.on("playerDisconnected", (id) => {
-    const o = otherPlayers[id]; if (!o) return;
-    scene.remove(o.mesh); delete otherPlayers[id];
-    setCount(Object.keys(otherPlayers).length + 1);
+  channel.on("presence", { event: "sync" }, syncFromPresence);
+  channel.on("presence", { event: "join" }, syncFromPresence);
+  channel.on("presence", { event: "leave" }, syncFromPresence);
+  channel.on("broadcast", { event: "move" }, ({ payload }) => applyRemoteState(payload));
+  channel.subscribe(async (status) => {
+    if (status === "SUBSCRIBED") {
+      netOnline = true;
+      setStatus("🟢 Online");
+      await channel.track(presencePayload());
+      syncFromPresence();
+    } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+      netOnline = false;
+      setStatus("🔴 Offline");
+    }
   });
+} else {
+  setStatus("🔴 Offline — Supabase gagal dimuat");
+  setCount(1);
 }
 
 // ---------------- Bot demo ----------------
@@ -604,6 +635,7 @@ renderer.domElement.addEventListener("wheel", (e) => { e.preventDefault(); camDi
 
 // ---------------- Gerakan saya (fisika Roblox-like) ----------------
 let lastEmit = 0;
+let lastPresence = 0;
 function updateMovement(delta) {
   if (!myMesh) return;
   const fx = -Math.sin(camYaw), fz = -Math.cos(camYaw);
@@ -643,9 +675,13 @@ function updateMovement(delta) {
   myMesh.rotation.y = lerpAngle(myMesh.rotation.y, myData.rotY, Math.min(1, delta * 12));
   animateAvatar(myMesh, moving, myMesh.userData.speedNorm, delta, !myData.grounded);
   const now = performance.now();
-  if (socket?.connected && now - lastEmit > 50) {
-    lastEmit = now;
-    socket.emit("playerMovement", { x: myData.x, y: myData.y, z: myData.z, rotY: myData.rotY, moving, zone: currentZone });
+  if (channel && netOnline) {
+    // Broadcast posisi ~15/detik (gerakan halus), presence ~1/detik (daftar pemain + zona)
+    if (now - lastEmit > 66) {
+      lastEmit = now;
+      channel.send({ type: "broadcast", event: "move", payload: presencePayload() });
+    }
+    if (now - lastPresence > 1000) { lastPresence = now; publishPresenceNow(); }
   }
 }
 function updateCamera(delta) {
