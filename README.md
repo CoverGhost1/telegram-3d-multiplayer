@@ -28,3 +28,8 @@ Identitas Telegram masih dari `initDataUnsafe` (tampilan saja). Untuk produksi, 
 - Server v3 kirim `zone` di `currentPlayers`/`playerMoved`; teleport masuk/keluar diizinkan (batas langkah 90 saat ganti zona).
 - Nama di papan Ruangan Berdua masih placeholder — ganti `COUPLE_NAMES` di `frontend-3d/app.js` kalau nama pacar sudah diketahui.
 - Tanpa NPC/bot (sesuai permintaan Ghoz 20 Nov 2026).
+
+## v4 — Joystick analog + nama Adel (22 Nov 2026)
+- D-pad diganti **joystick analog** (kiri bawah): dorong dikit = jalan pelan, dorong mentok = lari (kecepatan 2–8 ikut jarak dorongan). WASD tetap jalan di desktop.
+- Papan nama Ruangan Berdua kini "Ghoz & Adel".
+- Backend masih server.js v3 (Socket.IO, zona + Ruangan Berdua max 2). Deploy backend ke Render, lalu isi BACKEND_URL di frontend-3d/app.js.

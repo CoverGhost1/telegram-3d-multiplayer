@@ -1,13 +1,13 @@
 // ============================================================
-// Dunia 3D Multiplayer v3 — Roblox-style + interior
+// Dunia 3D Multiplayer v4 — Roblox-style + interior + analog
 // Avatar blocky beranimasi + kota kecil + lompat/lari + kamera orbit
 // v3: 3 bangunan bisa dimasuki (Rumah, Kafe, Ruangan Berdua privat max 2 orang)
-// Interior dibangun jauh di (80, *, *) supaya tidak tabrakan dengan kota luar.
-// Nama di Ruangan Berdua masih placeholder "Ghoz & Pacar" — ganti
-// COUPLE_NAMES kalau nama pacar Ghoz sudah diketahui.
+// v4: D-pad diganti joystick ANALOG — dorong dikit = jalan pelan,
+//      dorong mentok = lari. Kecepatan ikut seberapa jauh stick didorong.
+// Nama Ruangan Berdua: "Ghoz & Adel" (Adel, ultah 16 Januari).
 // ============================================================
 const BACKEND_URL = "GANTI_DENGAN_URL_BACKEND";
-const COUPLE_NAMES = "Ghoz & Pacar";
+const COUPLE_NAMES = "Ghoz & Adel";
 const WORLD_LIMIT = 27;
 const WALK_SPEED = 5.0;
 const RUN_SPEED = 8.0;
@@ -524,7 +524,44 @@ function updateBots(delta) {
   });
 }
 
-// ---------------- Kontrol: D-pad + lompat/lari + drag kamera ----------------
+// ---------------- Kontrol: JOYSTICK ANALOG + lompat/lari + drag kamera ----------------
+// Joystick analog: stick.x = kanan (+1) / kiri (-1), stick.y = maju (+1) / mundur (-1),
+// stick.mag = 0..1 seberapa jauh didorong (0 = diam, 1 = mentok = lari).
+const stick = { active: false, id: null, x: 0, y: 0, mag: 0 };
+const STICK_RADIUS = 42; // px, jarak maks knob dari tengah
+function stickSet(dx, dy) {
+  let len = Math.hypot(dx, dy);
+  if (len > STICK_RADIUS) { dx = dx / len * STICK_RADIUS; dy = dy / len * STICK_RADIUS; len = STICK_RADIUS; }
+  const knob = document.getElementById("stickKnob");
+  if (knob) knob.style.transform = "translate(" + dx + "px," + dy + "px)";
+  stick.x = dx / STICK_RADIUS; stick.y = -dy / STICK_RADIUS; // atas layar = maju
+  stick.mag = len / STICK_RADIUS;
+  if (stick.mag < 0.15) { stick.x = 0; stick.y = 0; stick.mag = 0; } // deadzone
+}
+function stickReset() {
+  stick.active = false; stick.id = null; stick.x = 0; stick.y = 0; stick.mag = 0;
+  const knob = document.getElementById("stickKnob");
+  if (knob) knob.style.transform = "translate(0px,0px)";
+}
+function stickInit() {
+  const base = document.getElementById("stickBase"); if (!base) return;
+  base.addEventListener("pointerdown", (e) => {
+    e.preventDefault(); stick.active = true; stick.id = e.pointerId;
+    base.setPointerCapture(e.pointerId);
+    const r = base.getBoundingClientRect();
+    stickSet(e.clientX - (r.left + r.width / 2), e.clientY - (r.top + r.height / 2));
+  });
+  base.addEventListener("pointermove", (e) => {
+    if (!stick.active || e.pointerId !== stick.id) return;
+    e.preventDefault();
+    const r = base.getBoundingClientRect();
+    stickSet(e.clientX - (r.left + r.width / 2), e.clientY - (r.top + r.height / 2));
+  });
+  const end = (e) => { if (e.pointerId === stick.id) stickReset(); };
+  base.addEventListener("pointerup", end);
+  base.addEventListener("pointercancel", end);
+}
+stickInit();
 const keys = { up: false, down: false, left: false, right: false, jump: false, run: false };
 function bindHold(id, name) {
   const el = document.getElementById(id); if (!el) return;
@@ -533,7 +570,6 @@ function bindHold(id, name) {
   el.addEventListener("pointerdown", on);
   el.addEventListener("pointerup", off); el.addEventListener("pointercancel", off); el.addEventListener("pointerleave", off);
 }
-bindHold("up", "up"); bindHold("down", "down"); bindHold("left", "left"); bindHold("right", "right");
 bindHold("jumpBtn", "jump"); bindHold("runBtn", "run");
 const enterBtnEl = document.getElementById("enterBtn");
 if (enterBtnEl) enterBtnEl.addEventListener("pointerdown", (e) => { e.preventDefault(); tryEnterExit(); });
@@ -572,21 +608,30 @@ function updateMovement(delta) {
   if (!myMesh) return;
   const fx = -Math.sin(camYaw), fz = -Math.cos(camYaw);
   const rx = -fz, rz = fx;
-  let ix = 0, iz = 0;
-  if (keys.up) { ix += fx; iz += fz; }
-  if (keys.down) { ix -= fx; iz -= fz; }
-  if (keys.right) { ix += rx; iz += rz; }
-  if (keys.left) { ix -= rx; iz -= rz; }
-  const len = Math.hypot(ix, iz);
-  const moving = len > 0;
+  let ix = 0, iz = 0, mag = 0;
+  // 1) Joystick analog (prioritas di HP): arah + kecepatan dari stick
+  if (stick.active && stick.mag > 0) {
+    ix = fx * stick.y + rx * stick.x;
+    iz = fz * stick.y + rz * stick.x;
+    mag = stick.mag;
+  } else {
+    // 2) Keyboard WASD / panah (digital)
+    if (keys.up) { ix += fx; iz += fz; }
+    if (keys.down) { ix -= fx; iz -= fz; }
+    if (keys.right) { ix += rx; iz += rz; }
+    if (keys.left) { ix -= rx; iz -= rz; }
+    const klen = Math.hypot(ix, iz);
+    if (klen > 0) { ix /= klen; iz /= klen; mag = 1; }
+  }
+  const moving = mag > 0;
   myData.moving = moving;
   if (moving) {
-    ix /= len; iz /= len;
-    const speed = keys.run ? RUN_SPEED : WALK_SPEED;
+    // Analog: dorong dikit = jalan pelan (~2), mentok = lari (8). Tombol LARI paksa lari.
+    const speed = keys.run ? RUN_SPEED : (2.0 + (RUN_SPEED - 2.0) * mag);
     myData.x += ix * speed * delta;
     myData.z += iz * speed * delta;
     myData.rotY = Math.atan2(ix, iz);
-    myMesh.userData.speedNorm = keys.run ? 1 : 0.6;
+    myMesh.userData.speedNorm = Math.max(mag, keys.run ? 1 : 0);
   } else myMesh.userData.speedNorm = 0;
   // Lompat + gravitasi
   if (keys.jump && myData.grounded) { myData.vy = JUMP_VEL; myData.grounded = false; keys.jump = false; }
