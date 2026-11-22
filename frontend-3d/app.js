@@ -12,6 +12,8 @@
 //      CLOSED) status jadi "🟡 Menghubungkan ulang..." dan channel dibuat
 //      ulang dengan backoff 2s → 4s → 8s (maks 10s), presence di-track
 //      ulang saat SUBSCRIBED; cek keamanan tiap 5 detik juga memicu retry.
+// v5.2: hitungan pemain pakai id unik — reconnect sempat bikin satu pemain
+//      kehitung dua kali (tampil "3 pemain" padahal cuma 2 tab).
 // ============================================================
 const SUPABASE_URL = "https://euywpjczkchpvtkpvbps.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV1eXdwamN6a2NocHZ0a3B2YnBzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTUzNTM4MTksImV4cCI6MjExMDkyOTgxOX0.cqUnF7MkI0GJC2HBu1qROyo8RSIJCw3k8X5QlVpw59g";
@@ -525,7 +527,12 @@ function syncFromPresence() {
   Object.keys(otherPlayers).forEach(id => {
     if (!seen.has(id)) { scene.remove(otherPlayers[id].mesh); delete otherPlayers[id]; }
   });
-  setCount(Math.max(1, all.length));
+  // Hitung pemain UNIK berdasarkan id (bukan jumlah meta presence):
+  // saat reconnect, satu pemain bisa punya 2 meta sesaat (channel lama
+  // belum timeout + channel baru), dan itu sempat bikin hitungan jadi 3.
+  const uniqueIds = new Set();
+  all.forEach(p => { if (p && p.id) uniqueIds.add(p.id); });
+  setCount(Math.max(1, uniqueIds.size));
 }
 function publishPresenceNow() {
   if (channel && netOnline) channel.track(presencePayload()).catch(() => {});
